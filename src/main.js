@@ -2,6 +2,7 @@
 import { createApp } from 'vue'
 
 // Import global stylesheet
+import 'normalize.css'
 import './style.css'
 
 // Import application view

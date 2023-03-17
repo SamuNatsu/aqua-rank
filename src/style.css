@@ -2,3 +2,13 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Global stylesheet */
+body {
+  @apply bg-slate-900
+}
+
+/* Application stylesheet */
+#app {
+  @apply w-full
+}
