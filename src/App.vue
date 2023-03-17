@@ -9,6 +9,7 @@ const rank = ref([])
 
 fetchRank().then((data)=>{
   rank.value = data
+  console.log(data)
 })
 
 </script>

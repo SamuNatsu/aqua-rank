@@ -54,7 +54,9 @@ const fetchRank = async ()=>{
           id: i,
           result: 0,
           tried: 0,
-          penalty: 0
+          penalty: 0,
+          beforeTried: 0,
+          afterTried: 0
         })
       }
     }
@@ -64,7 +66,7 @@ const fetchRank = async ()=>{
     switch (v.result) {
       case 4: { // Accepted
         if (ret[v.user_id][id].result === 1 || ret[v.user_id][id].result === 4) {
-          break;
+          break
         }
 
         if (first.indexOf(id) === -1) {
@@ -76,15 +78,28 @@ const fetchRank = async ()=>{
 
         ret[v.user_id][id].tried++
         ret[v.user_id][id].penalty += Math.trunc(((new Date(v.in_date).getTime()) - contest.timestamp) / 1000 / 60)
+        break
+      }
+      case '-': { // Frozen
+        if (ret[v.user_id][id].result === 1 || ret[v.user_id][id].result === 4) {
+          break
+        }
+
+        ret[v.user_id][id].result = 3
+        ret[v.user_id][id].beforeTried += ret[v.user_id][id].tried
+        ret[v.user_id][id].tried = 0
+        ret[v.user_id][id].afterTried++
+        break;
       }
       default: { // Other as WA
         if (ret[v.user_id][id].result === 1 || ret[v.user_id][id].result === 4) {
-          break;
+          break
         }
 
         ret[v.user_id][id].result = 2
         ret[v.user_id][id].tried++
         ret[v.user_id][id].penalty += 20
+        break
       }
     }
   })
