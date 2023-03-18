@@ -1,20 +1,59 @@
 /* Api interfaces */
 import axios from 'axios'
+import { useNotifyStore } from '../store/notify'
+import { cruiseToggle, cruiseSpeedUp, cruiseSpeedDown } from './trace'
 
-// Get contest info
-const getContestInfo = ()=>{
-  return {
+// Global hotkeys
+document.addEventListener('keyup', (e)=>{
+  // Cruise
+  switch (e.key) {
+    case 'x':
+      cruiseSpeedDown()
+      break
+    case 'c':
+      cruiseToggle()
+      break
+    case 'v':
+      cruiseSpeedUp()
+      break
+    case 's':
+      useNotifyStore().setSilent(true)
+      break
+    case 'd':
+      useNotifyStore().setSilent(false)
+      break
+  }
+}, false)
+
+// Fetch contest info
+const fetchContestInfo = async ()=>{
+  // Check session storage
+  if (sessionStorage.getItem('contest_info') !== null) {
+    return JSON.parse(sessionStorage.getItem('contest_info'))
+  }
+
+  // Fetch from remote
+  // Todo: Link to api
+  let data = {
     name: 'Test Contest',
     timestamp: 1672894800000,
-    totalProblem: 12
+    problems: 12
   }
+
+  // Update session storage
+  sessionStorage.setItem('contest_info', JSON.stringify(data))
+
+  // Return 
+  return data
 }
 
 // Fetch rank
 const fetchRank = async ()=>{
+  // Fetch raw data
+  // Todo: Link to api
   let data = []
   let tmp = null
-  
+
   do {
     tmp = await axios({
       method: 'get',
@@ -39,18 +78,23 @@ const fetchRank = async ()=>{
     data = data.concat(tmp.data.rows)
   } while (data.length < tmp.data.total)
 
+  // Preprocess raw data
   data = data.sort((a, b)=>a.solution_id - b.solution_id)
-  console.log(data)
 
-  let contest = getContestInfo()
-  let first = []
-  let ret = {}
+  // Generate rank
+  let contest = await fetchContestInfo()
+  let firstBlood = []
 
+  tmp = {}
   data.forEach((v)=>{
-    if (ret[v.user_id] === undefined) {
-      ret[v.user_id] = []
-      for (let i = 0; i < contest.totalProblem; ++i) {
-        ret[v.user_id].push({
+    // Get user id
+    let userId = v.user_id
+
+    // User not exists
+    if (tmp[userId] === undefined) {
+      tmp[userId] = []
+      for (let i = 0; i < contest.problems; ++i) {
+        tmp[userId].push({
           id: i,
           result: 0,
           tried: 0,
@@ -61,76 +105,80 @@ const fetchRank = async ()=>{
       }
     }
 
+    // Get problem id
     let id = /<[^>]*>([^<]*?)<[^>]*>/.exec(v.problem_id)[1].charCodeAt(0) - 65
 
+    // Process result
     switch (v.result) {
       case 4: { // Accepted
-        if (ret[v.user_id][id].result === 1 || ret[v.user_id][id].result === 4) {
+        if (tmp[userId][id].result === 1 || tmp[userId][id].result === 4) {
           break
         }
 
-        if (first.indexOf(id) === -1) {
-          ret[v.user_id][id].result = 4
-          first.push(id)
+        // Check first blood
+        if (firstBlood.indexOf(id) === -1) {
+          tmp[userId][id].result = 4
+          firstBlood.push(id)
         } else {
-          ret[v.user_id][id].result = 1
+          tmp[userId][id].result = 1
         }
 
-        ret[v.user_id][id].tried++
-        ret[v.user_id][id].penalty += Math.trunc(((new Date(v.in_date).getTime()) - contest.timestamp) / 1000 / 60)
+        tmp[userId][id].tried++
+        tmp[userId][id].penalty += Math.trunc(((new Date(v.in_date).getTime()) - contest.timestamp) / 1000 / 60)
         break
       }
       case '-': { // Frozen
-        if (ret[v.user_id][id].result === 1 || ret[v.user_id][id].result === 4) {
+        if (tmp[userId][id].result === 1 || tmp[userId][id].result === 4) {
           break
         }
 
-        ret[v.user_id][id].result = 3
-        ret[v.user_id][id].beforeTried += ret[v.user_id][id].tried
-        ret[v.user_id][id].tried = 0
-        ret[v.user_id][id].afterTried++
-        break;
+        tmp[userId][id].result = 3
+        tmp[userId][id].beforeTried += tmp[userId][id].tried
+        tmp[userId][id].tried = 0
+        tmp[userId][id].afterTried++
+        break
       }
       default: { // Other as WA
-        if (ret[v.user_id][id].result === 1 || ret[v.user_id][id].result === 4) {
+        if (tmp[userId][id].result === 1 || tmp[userId][id].result === 4) {
           break
         }
 
-        ret[v.user_id][id].result = 2
-        ret[v.user_id][id].tried++
-        ret[v.user_id][id].penalty += 20
+        tmp[userId][id].result = 2
+        tmp[userId][id].tried++
+        tmp[userId][id].penalty += 20
         break
       }
     }
   })
 
-  let order = []
-  Object.getOwnPropertyNames(ret).forEach((key)=>{
+  // Build rank
+  let ret = []
+  Object.getOwnPropertyNames(tmp).forEach((key)=>{
     let totalPenalty = 0
     let totalSolved = 0
-    ret[key].forEach((v)=>{
+    tmp[key].forEach((v)=>{
       totalPenalty += (v.result === 1 || v.result === 4 ? v.penalty : 0)
       totalSolved += (v.result === 1 || v.result === 4 ? 1 : 0)
     })
-    order.push({
+    ret.push({
       userId: key,
       totalPenalty,
       totalSolved,
-      status: ret[key]
+      status: tmp[key]
     })
   })
-  order = order.sort((a, b)=>{
+  ret = ret.sort((a, b)=>{
     if (a.totalSolved === b.totalSolved)
       return a.totalPenalty - b.totalPenalty
     else 
       return b.totalSolved - a.totalSolved
   })
-  order.forEach((v, idx, arr)=>{
+  ret.forEach((v, idx, arr)=>{
     arr[idx].rank = idx + 1
   })
 
-  return order
+  return ret
 }
 
 // Export
-export { fetchRank }
+export { fetchContestInfo, fetchRank }
