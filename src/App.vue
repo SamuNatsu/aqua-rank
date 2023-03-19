@@ -1,24 +1,24 @@
 <script setup>
 import { ref } from 'vue'
-import { fetchContestInfo, fetchRank } from './api'
+import { storeToRefs } from 'pinia'
+import { useContestStore } from './store/contest'
 
 // Components
 import CompetitorRowVue from './components/CompetitorRow.vue'
+import HelpPageVue from './components/HelpPage.vue'
 import NotifyListVue from './components/NotifyList.vue'
 
+// Stores
+const contest = useContestStore()
+const { rank } = storeToRefs(contest)
+
 // Reactive
-const title = ref("")
-const rank = ref(null)
 const exception = ref(null)
 
 // Asynchronize
-fetchContestInfo()
-  .then((data)=>{
-    title.value = data.name
-    document.title = data.name + ' | Aqua Rank'
-  })
-fetchRank()
-  .then((data)=>{ rank.value = data })
+contest
+  .fetchInfo()
+  .then(contest.fetchRank)
   .catch((err)=>{
     console.log(err)
     exception.value = err.message
@@ -29,8 +29,14 @@ fetchRank()
   <!-- Notify -->
   <notify-list-vue/>
 
+  <!-- Help page -->
+  <help-page-vue/>
+
   <!-- Title -->
-  <div class="font-bold my-10 text-3xl text-center text-white">{{ title }}</div>
+  <div class="my-10">
+    <div class="font-bold text-3xl text-center text-white">{{ contest.getName }}</div>
+    <div class="font-mono my-4 text-center text-white">{{ contest.getSpan }}</div>
+  </div>
 
   <!-- Header -->
   <a id="rank-top"/>

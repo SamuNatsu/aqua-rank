@@ -1,43 +1,20 @@
 /* Api interfaces */
 import axios from 'axios'
-import { useNotifyStore } from '../store/notify'
-import { cruiseToggle, cruiseSpeedUp, cruiseSpeedDown } from './trace'
-
-// Global hotkeys
-document.addEventListener('keyup', (e)=>{
-  // Cruise
-  switch (e.key) {
-    case 'x':
-      cruiseSpeedDown()
-      break
-    case 'c':
-      cruiseToggle()
-      break
-    case 'v':
-      cruiseSpeedUp()
-      break
-    case 's':
-      useNotifyStore().setSilent(true)
-      break
-    case 'd':
-      useNotifyStore().setSilent(false)
-      break
-  }
-}, false)
 
 // Fetch contest info
-const fetchContestInfo = async ()=>{
+const fetchContestInfo = async (force)=>{
   // Check session storage
-  if (sessionStorage.getItem('contest_info') !== null) {
+  if (!force && sessionStorage.getItem('contest_info') !== null) {
     return JSON.parse(sessionStorage.getItem('contest_info'))
   }
 
   // Fetch from remote
-  // Todo: Link to api
-  let data = {
-    name: 'Test Contest',
-    timestamp: 1672894800000,
-    problems: 12
+  let data = null
+  try {
+    data = (await axios.get('/contest.json')).data
+  }
+  catch (err) {
+    return null
   }
 
   // Update session storage
@@ -82,7 +59,6 @@ const fetchRank = async ()=>{
   data = data.sort((a, b)=>a.solution_id - b.solution_id)
 
   // Generate rank
-  let contest = await fetchContestInfo()
   let firstBlood = []
 
   tmp = {}
@@ -93,7 +69,7 @@ const fetchRank = async ()=>{
     // User not exists
     if (tmp[userId] === undefined) {
       tmp[userId] = []
-      for (let i = 0; i < contest.problems; ++i) {
+      for (let i = 0; i < this.info.problems; ++i) {
         tmp[userId].push({
           id: i,
           result: 0,

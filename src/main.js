@@ -1,5 +1,6 @@
 /* Main entrance */
 import { createApp } from 'vue'
+import { register } from './api/hotkey'
 
 // Import plugins
 import pinia from './store'
@@ -15,3 +16,6 @@ import App from './App.vue'
 createApp(App)
   .use(pinia)
   .mount('#app')
+
+// Register hotkeys
+register()

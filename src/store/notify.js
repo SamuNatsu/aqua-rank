@@ -8,11 +8,18 @@ export const useNotifyStore = defineStore('notify', {
   }),
   actions: {
     setSilent(b) {
-      this.silent = b
+      // Skip when no effect
+      if (this.silent === b) {
+        return
+      }
 
-      // Flush when silent
       if (b) {
         this.flush()
+        this.push('info', 'Silent notifications')
+        this.silent = true
+      } else {
+        this.silent = false
+        this.push('info', 'Show notifications')
       }
     },
     push(type, msg) {
