@@ -18,7 +18,24 @@ const exception = ref(null)
 // Asynchronize
 contest
   .fetchInfo()
-  .then(contest.fetchRank)
+  .then(()=>{
+    return contest.fetchSubmissions(0)
+  })
+  .then((data)=>{
+    contest.genNewRank(contest.genNewRawStatus(data))
+
+    let timestamp = 20
+    const step = ()=>{
+      contest
+        .fetchSubmissions(timestamp)
+        .then((data)=>{
+          contest.genNewRank(contest.genNewRawStatus(data))
+          timestamp += 20
+          setTimeout(step, 5000)
+        })
+    }
+    setTimeout(step, 5000)
+  })
   .catch((err)=>{
     console.log(err)
     exception.value = err.message

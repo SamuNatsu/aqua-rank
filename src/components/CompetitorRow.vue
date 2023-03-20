@@ -1,6 +1,7 @@
 <script setup>
-import { ref } from 'vue'
+import { reactive, ref, watch } from 'vue'
 import { useContestStore } from '../store/contest'
+import cruise from '../api/cruise'
 
 // Components
 import StatusTagVue from './StatusTag.vue'
@@ -14,43 +15,84 @@ const props = defineProps({ info: Object })
     totalSolved: Number
     totalPenalty: Number
     status: Array
+    diff(optional): 'asc' | 'desc'
 */
 
 // Stores
 const contest = useContestStore()
 
 // Reactive
+const element = ref(null)
 const status = ref(props.info.status)
+const cruiseStatus = ref(cruise.getStatus())
+const shadowClass = reactive({
+  asc: false,
+  desc: false
+})
 
-// Subscribe
-contest.$subscribe((_, state)=>{
+// Watch
+watch(
+  ()=>props.info,
+  ()=>{
+    status.value = props.info.status
+
+    shadowClass.asc = shadowClass.desc = false
+    if (props.info.diff === 'asc') {
+      shadowClass.asc = true
+    } else if (props.info.diff === 'desc') {
+      shadowClass.desc = true
+    }
+
+    setTimeout(()=>{
+      shadowClass.asc = shadowClass.desc = false
+    }, 3000)
+  }
+)
+
+// Actions
+const delay = (ticks)=>new Promise((resolve)=>{
+  setTimeout(()=>resolve(), ticks)
+})
+const focus = ()=>{
+  const rect = element.value.getBoundingClientRect()
+  cruiseStatus.value = cruise.getStatus()
+
+  // Scroll to element
+  cruise.stop(true)
+  scrollTo(0, scrollY + rect.top + (rect.height - innerHeight) / 2)
+}
+
+// Subscribe state
+contest.$subscribe((mutation, state)=>{
   // Competitor is focused
-  if (state.focusUserId === props.info.userId) {
-    // Delay function
-    const delay = (ticks)=>new Promise((resolve)=>{
-      setTimeout(()=>resolve(), ticks)
-    })
-
-    // Status patch
-    const patched = props.info.status.map((v, idx)=>{
-      return state.focusUpdate[idx] ?? v
-    })
-
+  if (mutation.type === 'patch object' && state.focusUserId === props.info.userId) {
     // Asynchronize animation
     new Promise(async (resolve)=>{
+      // Focus on
+      focus()
+
       // Flash updated
       for (let i = 0; i < 4; ++i) {
         await delay(400)
-        status.value = patched
+        status.value = state.focusUpdate
         await delay(400)
         status.value = props.info.status
       }
-      status.value = patched
+      status.value = state.focusUpdate
+
       resolve()
     }).then(()=>{
       // Clean up
       contest.focusUserId = null
       contest.focusUpdate = null
+
+      // Restore cruising
+      if (cruiseStatus.value) {
+        cruise.start(cruise.getSpeed(), true)
+      }
+
+      // Generate new rank
+      contest.genNewRank()
     })
   }
 })
@@ -59,7 +101,9 @@ contest.$subscribe((_, state)=>{
 <template>
   <div 
     :data-user-id="info.userId"
-    class="bg-gray-700 flex items-center m-4 p-4 relative rounded-md print:break-inside-avoid"
+    class="bg-gray-700 flex items-center m-4 p-4 relative rounded-md transition-shadow print:break-inside-avoid"
+    :class="shadowClass"
+    ref="element"
   >
     <!-- Focus light -->
     <template v-if="contest.focusUserId === info.userId">
@@ -76,9 +120,8 @@ contest.$subscribe((_, state)=>{
     <!-- Status tags -->
     <div class="flex flex-wrap select-none w-2/3">
       <status-tag-vue 
-        v-for="(i, idx) in status" 
+        v-for="i in status" 
         :key="i.id" 
-        :index="idx" 
         :status="i"
       />
     </div>
@@ -88,3 +131,13 @@ contest.$subscribe((_, state)=>{
     <div class="font-bold text-center text-white w-1/12">{{ info.totalPenalty }}</div>
   </div>
 </template>
+
+<style lang="postcss" scoped>
+.asc {
+  @apply shadow-md shadow-green-400
+}
+
+.desc {
+  @apply shadow-md shadow-red-400
+}
+</style>

@@ -9,7 +9,7 @@ const data = {
   speed: 100
 }
 
-const start = (speed)=>{
+const start = (speed, silent)=>{
   // Check handle
   if (data.handle !== null) {
     return
@@ -19,7 +19,11 @@ const start = (speed)=>{
   const body = document.body
   const topAnchor = document.querySelector('#rank-top')
   data.speed = Math.max(20, speed)
-  useNotifyStore().push('info', 'Start cruising')
+
+  // Send notification
+  if (silent !== true) {
+    useNotifyStore().push('info', 'Start cruising')
+  }
 
   // Start cruising
   const step = (timestamp)=>{
@@ -47,10 +51,13 @@ const start = (speed)=>{
   data.handle = requestAnimationFrame(step)
 }
 
-const stop = ()=>{
+const stop = (silent)=>{
   // Check handle
   if (data.handle !== null) {
-    useNotifyStore().push('info', 'Stop cruising')
+    if (silent !== true) {
+      useNotifyStore().push('info', 'Stop cruising')
+    }
+
     cancelAnimationFrame(data.handle)
     data.handle = null
     data.startTimestamp = null
@@ -58,12 +65,12 @@ const stop = ()=>{
   }
 }
 
-const toggle = ()=>{
+const toggle = (silent)=>{
   // Check handle
   if (data.handle === null) {
-    start(data.speed)
+    start(data.speed, silent)
   } else {
-    stop()
+    stop(silent)
   }
 }
 
@@ -90,13 +97,18 @@ const getStatus = ()=>{
   return data.handle !== null
 }
 
+const getSpeed = ()=>{
+  return data.speed
+}
+
 const cruise = {
   start,
   stop,
   toggle,
   speedUp,
   speedDown,
-  getStatus
+  getStatus,
+  getSpeed
 }
 
 export default cruise

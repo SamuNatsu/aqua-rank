@@ -1,6 +1,5 @@
 /* Contest store */
 import axios from 'axios'
-import cruise from '../api/cruise'
 import { defineStore } from 'pinia'
 import { useNotifyStore } from './notify'
 
@@ -8,6 +7,7 @@ export const useContestStore = defineStore('contest', {
   state: ()=>({
     info: null,
     rawStatus: null,
+    firstBlood: [],
     rank: null,
     lastFocus: null,
     focusUserId: null,
@@ -17,14 +17,12 @@ export const useContestStore = defineStore('contest', {
     getName() {
       return this.info === null ? 'Aqua Rank' : this.info.name
     },
-    getProblems() {
-      return this.info === null ? null : this.info.problems
-    },
     getSpan() {
       return this.info === null ? '' : `${new Date(this.info.timestamp).toLocaleString()} ~ ${new Date(this.info.timestamp + this.info.span).toLocaleString()}`
     }
   },
   actions: {
+    // Fetch contest info
     async fetchInfo(force) {
       // Check force & exists
       if (!force && this.info !== null) {
@@ -46,20 +44,41 @@ export const useContestStore = defineStore('contest', {
       document.title = `${this.info.name} | Aqua Rank`
     },
 
-    // TODO
-    async fetchRank() {
-      // Check contest info
-      if (this.info === null) {
-        throw { message: 'Contest info unavailable' }
-      }
-
-      // Fetch raw data
-      // Todo: Link to api
+    // Fetch raw data
+    // TODO: Need API binding
+    async fetchSubmissions(timestamp) {
       let data = []
-      let tmp = null
+      if (timestamp === undefined) {  // Fetch all
+        let tmp = null
+        do {
+          tmp = await axios({
+            method: 'get',
+            baseURL: null,
+            url: '/api/status_ajax',
+            headers: {
+              'X-Requested-With': 'XMLHttpRequest'
+            },
+            params: {
+              cid: 1038,
+              sort: 'solution_id_show',
+              order: 'desc',
+              offset: data.length,
+              limit: 20,
+              problem_id: '',
+              user_id: '',
+              solution_id: '',
+              language: -1,
+              result: -1
+            }
+          })
+          data = data.concat(tmp.data.rows)
+        } while (data.length < tmp.data.total)
+      } else {  // Fetch after timestamp
+        if (timestamp > 519) {
+          return []
+        }
 
-      do {
-        tmp = await axios({
+        data = (await axios({
           method: 'get',
           baseURL: null,
           url: '/api/status_ajax',
@@ -70,7 +89,7 @@ export const useContestStore = defineStore('contest', {
             cid: 1038,
             sort: 'solution_id_show',
             order: 'desc',
-            offset: data.length,
+            offset: 500 - timestamp,
             limit: 20,
             problem_id: '',
             user_id: '',
@@ -78,26 +97,29 @@ export const useContestStore = defineStore('contest', {
             language: -1,
             result: -1
           }
-        })
-        data = data.concat(tmp.data.rows)
-      } while (data.length < tmp.data.total)
+        })).data.rows
+      }
 
-      // Preprocess raw data
+      // Preprocess
       data = data.sort((a, b)=>a.solution_id - b.solution_id)
 
-      // Generate rank
-      let firstBlood = []
+      return data
+    },
 
-      tmp = {}
-      data.forEach((v)=>{
+    // Generate new raw status
+    // TODO: Need API binding
+    genNewRawStatus(newSubmission) {
+      const ret = this.rawStatus === null ? {} : JSON.parse(JSON.stringify(this.rawStatus))
+
+      newSubmission.forEach((v)=>{
         // Get user id
         let userId = v.user_id
 
         // User not exists
-        if (tmp[userId] === undefined) {
-          tmp[userId] = []
+        if (ret[userId] === undefined) {
+          ret[userId] = []
           for (let i = 0; i < this.info.problems; ++i) {
-            tmp[userId].push({
+            ret[userId].push({
               id: i,
               result: 0,
               tried: 0,
@@ -114,53 +136,60 @@ export const useContestStore = defineStore('contest', {
         // Process result
         switch (v.result) {
           case 4: { // Accepted
-            if (tmp[userId][id].result === 1 || tmp[userId][id].result === 4) {
+            if (ret[userId][id].result === 1 || ret[userId][id].result === 4) {
               break
             }
 
             // Check first blood
-            if (firstBlood.indexOf(id) === -1) {
-              tmp[userId][id].result = 4
-              firstBlood.push(id)
+            if (this.firstBlood.indexOf(id) === -1) {
+              ret[userId][id].result = 4
+              this.firstBlood.push(id)
             } else {
-              tmp[userId][id].result = 1
+              ret[userId][id].result = 1
             }
 
-            tmp[userId][id].tried++
-            tmp[userId][id].penalty += Math.trunc(((new Date(v.in_date).getTime()) - this.info.timestamp) / 1000 / 60)
+            ret[userId][id].tried++
+            ret[userId][id].penalty += Math.trunc(((new Date(v.in_date).getTime()) - this.info.timestamp) / 1000 / 60)
             break
           }
           case '-': { // Frozen
-            if (tmp[userId][id].result === 1 || tmp[userId][id].result === 4) {
+            if (ret[userId][id].result === 1 || ret[userId][id].result === 4) {
               break
             }
 
-            tmp[userId][id].result = 3
-            tmp[userId][id].beforeTried += tmp[userId][id].tried
-            tmp[userId][id].tried = 0
-            tmp[userId][id].afterTried++
+            ret[userId][id].result = 3
+            ret[userId][id].beforeTried += ret[userId][id].tried
+            ret[userId][id].tried = 0
+            ret[userId][id].afterTried++
             break
           }
           default: { // Other as WA
-            if (tmp[userId][id].result === 1 || tmp[userId][id].result === 4) {
+            if (ret[userId][id].result === 1 || ret[userId][id].result === 4) {
               break
             }
 
-            tmp[userId][id].result = 2
-            tmp[userId][id].tried++
-            tmp[userId][id].penalty += 20
+            ret[userId][id].result = 2
+            ret[userId][id].tried++
+            ret[userId][id].penalty += 20
             break
           }
         }
       })
-      this.rawStatus = tmp
 
-      // Build rank
+      return ret
+    },
+
+    // Generate rank
+    genNewRank(newRawStatus) {
+      // Update raw status
+      this.rawStatus = newRawStatus
+
+      // Generate competitor info list
       let ret = []
-      Object.getOwnPropertyNames(tmp).forEach((key)=>{
+      Object.getOwnPropertyNames(newRawStatus).forEach((key)=>{
         let totalPenalty = 0
         let totalSolved = 0
-        tmp[key].forEach((v)=>{
+        newRawStatus[key].forEach((v)=>{
           totalPenalty += (v.result === 1 || v.result === 4 ? v.penalty : 0)
           totalSolved += (v.result === 1 || v.result === 4 ? 1 : 0)
         })
@@ -168,9 +197,11 @@ export const useContestStore = defineStore('contest', {
           userId: key,
           totalPenalty,
           totalSolved,
-          status: tmp[key]
+          status: newRawStatus[key]
         })
       })
+
+      // Sort & assign rank
       ret = ret.sort((a, b)=>{
         if (a.totalSolved === b.totalSolved)
           return a.totalPenalty - b.totalPenalty
@@ -180,37 +211,66 @@ export const useContestStore = defineStore('contest', {
       ret.forEach((_, idx, arr)=>{
         arr[idx].rank = idx + 1
       })
+
+      // Assign rank diff
+      if (this.rank !== null) {
+        this.rank.forEach((v0)=>{
+          ret.forEach((v1, idx, arr)=>{
+            if (v0.userId === v1.userId) {
+              if (v0.rank < v1.rank) {
+                arr[idx].diff = 'desc'
+              } else if (v0.rank > v1.rank) {
+                arr[idx].diff = 'asc'
+              }
+            }
+          })
+        })
+      }
+
       this.rank = ret
     },
-    focusAndRefresh(userId, updatedStatus) {
-      // Get element
-      const el = document.querySelector(`[data-user-id="${userId}"]`)
-      if (el === null) {
+
+    // Auto focus user
+    autoFocus() {
+      this.genNewRank()
+      return
+      // Check timestamp
+      if (this.lastFocus && this.focusUserId === null && new Date().getTime() - this.lastFocus < 10000) {
+        this.genNewRank()
         return
       }
 
-      // Check timestamp
-      if (this.lastFocus && new Date().getTime() - this.lastFocus < 10000) {
+      // Find difference
+      if (this.rawStatus === null) {
+        this.genNewRank()
         return
       }
-      this.lastFocus = new Date().getTime()
+      let userId = null
+      let updatedStatus = null
+      Object.keys(this.newRawStatus).forEach((v)=>{
+        if (userId === null && this.rawStatus[v] !== undefined) {
+          for (let i = 0; i < this.info.problems; ++i) {
+            if ((this.newRawStatus[v][i].result === 1 || this.newRawStatus[v][i].result === 4) && 
+              this.rawStatus[v][i].result !== this.newRawStatus[v][i].result) 
+            {
+              userId = v
+              updatedStatus = this.newRawStatus[v]
+              break
+            }
+          }
+        }
+      })
+      if (userId === null) {
+        this.genNewRank()
+        return
+      }
 
       // Set focus
-      this.focusUserId = userId
-      this.focusUpdate = updatedStatus
-
-      // Scroll to element
-      const rect = el.getBoundingClientRect()
-      const status = cruise.getStatus()
-      cruise.stop()
-      scrollTo(0, scrollY + rect.top + (rect.height - innerHeight) / 2)
-
-      // Restore cruise status
-      setTimeout(()=>{
-        if (status && status === cruise.getStatus()) {
-          cruise.start()
-        }
-      }, 3000)
+      this.$patch({
+        lastFocus: new Date().getTime(),
+        focusUserId: userId,
+        focusUpdate: updatedStatus
+      })
     }
   }
 })
