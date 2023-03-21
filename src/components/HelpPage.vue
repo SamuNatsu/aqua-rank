@@ -1,14 +1,13 @@
 <script setup>
-import { storeToRefs } from 'pinia'
 import { useStatusStore } from '../store/status'
 
-// Get status
-const { showHelp } = storeToRefs(useStatusStore())
+// Stores
+const status = useStatusStore()
 </script>
 
 <template>
   <div
-    v-if="showHelp" 
+    v-if="status.showHelp" 
     class="backdrop-brightness-50 flex fixed items-center justify-center h-full left-0 select-none top-0 w-full z-40"
   >
     <div class="bg-white p-4 rounded-xl">
@@ -22,6 +21,7 @@ const { showHelp } = storeToRefs(useStatusStore())
       <p><span class="key">C</span>Toggle cruising</p>
       <p><span class="key">V</span>Speed up cruising</p>
       <p><span class="key">X</span>Speed down cruising</p>
+      <p><span class="key">Z</span>Switch cruising mode</p>
       <h3>Notification</h3>
       <p><span class="key">S</span>Silent notification</p>
       <p><span class="key">D</span>Show notification</p>

@@ -6,7 +6,9 @@ const data = {
   handle: null,
   startTimestamp: null,
   previousTimestamp: null,
-  speed: 100
+  speed: 100,
+  mode: 0,
+  direction: 1
 }
 
 const start = (speed, silent)=>{
@@ -36,12 +38,21 @@ const start = (speed, silent)=>{
     // Scrolling
     const elapsed = timestamp - data.previousTimestamp
     if (data.previousTimestamp !== timestamp) {
-      scrollTo(0, scrollY + elapsed / 1000.0 * data.speed)
+      scrollTo(0, scrollY + elapsed / 1000.0 * data.speed * data.direction)
     }
 
-    // If at bottom
-    if (innerHeight + scrollY >= body.offsetHeight) {
-      topAnchor.scrollIntoView(true)
+    // If at edge
+    if (data.mode === 0) {
+      if (innerHeight + scrollY >= body.offsetHeight) {
+        topAnchor.scrollIntoView(true)
+      }
+    } else {
+      if (innerHeight + scrollY >= body.offsetHeight) {
+        scrollTo(0, body.offsetHeight - innerHeight - 1)
+        data.direction = -1
+      } else if (topAnchor.getBoundingClientRect().top > 0) {
+        data.direction = 1
+      }
     }
 
     // Next loop
@@ -93,6 +104,17 @@ const speedDown = ()=>{
   }
 }
 
+const toggleMode = ()=>{
+  if (data.mode === 0) {
+    data.mode = 1
+    useNotifyStore().push('info', 'Round-trip mode')
+  } else {
+    data.mode = 0
+    useNotifyStore().push('info', 'Sequence mode')
+  }
+  data.direction = 1
+}
+
 const getStatus = ()=>{
   return data.handle !== null
 }
@@ -107,6 +129,7 @@ const cruise = {
   toggle,
   speedUp,
   speedDown,
+  toggleMode,
   getStatus,
   getSpeed
 }

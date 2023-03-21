@@ -22,14 +22,19 @@ contest
     return contest.fetchSubmissions(0)
   })
   .then((data)=>{
-    contest.genNewRank(contest.genNewRawStatus(data))
+    const patch = contest.genRawStatusPatch(data)
+    contest.patchRawStatus(patch)
+    contest.genNewRank()
 
     let timestamp = 20
     const step = ()=>{
       contest
         .fetchSubmissions(timestamp)
         .then((data)=>{
-          contest.genNewRank(contest.genNewRawStatus(data))
+          const patch = contest.genRawStatusPatch(data)
+          //contest.patchRawStatus(patch)
+          contest.autoFocus(patch)
+
           timestamp += 20
           setTimeout(step, 5000)
         })
@@ -69,7 +74,17 @@ contest
 
   <!-- Competitors -->
   <transition-group v-if="rank !== null" name="competitors">
-    <competitor-row-vue v-for="i in rank" :key="i.userId" :info="i"/>
+    <competitor-row-vue
+      v-for="i in rank" 
+      :key="i.userId"
+      :rank="i.rank"
+      :user-id="i.userId"
+      :solved="i.solved"
+      :penalty="i.penalty"
+      :change="i.change"
+      :status="i.status"
+      :info="i"
+    />
   </transition-group>
   <div v-else-if="exception === null" class="msg">
     <div class="spin"/>

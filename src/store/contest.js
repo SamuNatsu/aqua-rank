@@ -6,12 +6,13 @@ import { useNotifyStore } from './notify'
 export const useContestStore = defineStore('contest', {
   state: ()=>({
     info: null,
-    rawStatus: null,
+    rawStatus: {},
     firstBlood: [],
-    rank: null,
-    lastFocus: null,
+    rank: [],
+    lastFocus: 0,
     focusUserId: null,
-    focusUpdate: null
+    focusPatch: null,
+    fullPatch: null
   }),
   getters: {
     getName() {
@@ -108,68 +109,70 @@ export const useContestStore = defineStore('contest', {
 
     // Generate new raw status
     // TODO: Need API binding
-    genNewRawStatus(newSubmission) {
-      const ret = this.rawStatus === null ? {} : JSON.parse(JSON.stringify(this.rawStatus))
+    genRawStatusPatch(submissions) {
+      const ret = {}
+      const problems = this.info.problems
 
-      newSubmission.forEach((v)=>{
+      // Patch raw status
+      submissions.forEach((v)=>{
         // Get user id
-        let userId = v.user_id
+        const userId = v.user_id
 
         // User not exists
         if (ret[userId] === undefined) {
           ret[userId] = []
-          for (let i = 0; i < this.info.problems; ++i) {
+          for (let i = 0; i < problems; ++i) {
             ret[userId].push({
-              id: i,
-              result: 0,
-              tried: 0,
+              problemId: i,
+              result: 'none',
+              tries: 0,
               penalty: 0,
-              beforeTried: 0,
-              afterTried: 0
+              frozenTries: 0
             })
           }
         }
 
         // Get problem id
-        let id = /<[^>]*>([^<]*?)<[^>]*>/.exec(v.problem_id)[1].charCodeAt(0) - 65
+        const id = /<[^>]*>([^<]*?)<[^>]*>/.exec(v.problem_id)[1].charCodeAt(0) - 65
 
         // Process result
+        const isAccepted = ()=>{
+          return ['first_blood', 'accepted'].includes(ret[userId][id].result)
+        }
         switch (v.result) {
           case 4: { // Accepted
-            if (ret[userId][id].result === 1 || ret[userId][id].result === 4) {
+            if (isAccepted()) {
               break
             }
 
             // Check first blood
-            if (this.firstBlood.indexOf(id) === -1) {
-              ret[userId][id].result = 4
-              this.firstBlood.push(id)
+            if (this.firstBlood.includes(id)) {
+              ret[userId][id].result = 'accepted'
             } else {
-              ret[userId][id].result = 1
+              ret[userId][id].result = 'first_blood'
+              this.firstBlood.push(id)
             }
 
-            ret[userId][id].tried++
+            ret[userId][id].tries++
             ret[userId][id].penalty += Math.trunc(((new Date(v.in_date).getTime()) - this.info.timestamp) / 1000 / 60)
             break
           }
           case '-': { // Frozen
-            if (ret[userId][id].result === 1 || ret[userId][id].result === 4) {
+            if (isAccepted()) {
               break
             }
 
-            ret[userId][id].result = 3
-            ret[userId][id].beforeTried += ret[userId][id].tried
-            ret[userId][id].tried = 0
-            ret[userId][id].afterTried++
+            ret[userId][id].result = 'frozen'
+            ret[userId][id].frozenTries++
             break
           }
           default: { // Other as WA
-            if (ret[userId][id].result === 1 || ret[userId][id].result === 4) {
+            if (isAccepted()) {
               break
             }
 
-            ret[userId][id].result = 2
-            ret[userId][id].tried++
+            ret[userId][id].result = 'wrong_answer'
+            ret[userId][id].tries++
             ret[userId][id].penalty += 20
             break
           }
@@ -179,88 +182,122 @@ export const useContestStore = defineStore('contest', {
       return ret
     },
 
+    // Patch raw status
+    patchRawStatus(patch) {
+      const isAccepted = (uid, pid)=>{
+        return ['first_blood', 'accepted'].includes(this.rawStatus[uid][pid].result)
+      }
+
+      // Enumerate patch userId
+      for (const userId in patch) {
+        if (patch.hasOwnProperty(userId)) {
+          // If userId exists in raw status
+          if (this.rawStatus.hasOwnProperty(userId)) {
+            for (let i = 0; i < this.info.problems; ++i) {
+              if (isAccepted(userId, i)) {
+                continue
+              }
+
+              const s = this.rawStatus[userId][i]
+              const p = patch[userId][i]
+
+              s.result = p.result
+              s.tries += p.tries
+              s.penalty += p.penalty
+              s.frozenTries += p.frozenTries
+            }
+          } else {
+            this.rawStatus[userId] = patch[userId]
+          }
+        }
+      }
+    },
+
     // Generate rank
-    genNewRank(newRawStatus) {
-      // Update raw status
-      this.rawStatus = newRawStatus
+    genNewRank() {
+      let ret = []
 
       // Generate competitor info list
-      let ret = []
-      Object.getOwnPropertyNames(newRawStatus).forEach((key)=>{
-        let totalPenalty = 0
-        let totalSolved = 0
-        newRawStatus[key].forEach((v)=>{
-          totalPenalty += (v.result === 1 || v.result === 4 ? v.penalty : 0)
-          totalSolved += (v.result === 1 || v.result === 4 ? 1 : 0)
-        })
-        ret.push({
-          userId: key,
-          totalPenalty,
-          totalSolved,
-          status: newRawStatus[key]
-        })
-      })
+      for (const userId in this.rawStatus) {
+        if (this.rawStatus.hasOwnProperty(userId)) {
+          const s = this.rawStatus[userId]
+          let solved = 0
+          let penalty = 0
+
+          s.forEach((v)=>{
+            penalty += (v.result === 'first_blood' || v.result === 'accepted' ? v.penalty : 0)
+            solved += (v.result === 'first_blood' || v.result === 'accepted' ? 1 : 0)
+          })
+
+          ret.push({
+            userId,
+            solved,
+            penalty,
+            status: s
+          })
+        }
+      }
 
       // Sort & assign rank
       ret = ret.sort((a, b)=>{
-        if (a.totalSolved === b.totalSolved)
-          return a.totalPenalty - b.totalPenalty
-        else 
-          return b.totalSolved - a.totalSolved
+        return a.solved === b.solved ?
+          (a.penalty === b.penalty ? (a.userId < b.userId ? -1 : 1) : a.penalty - b.penalty) :
+          b.solved - a.solved
       })
       ret.forEach((_, idx, arr)=>{
         arr[idx].rank = idx + 1
       })
 
-      // Assign rank diff
-      if (this.rank !== null) {
-        this.rank.forEach((v0)=>{
-          ret.forEach((v1, idx, arr)=>{
-            if (v0.userId === v1.userId) {
-              if (v0.rank < v1.rank) {
-                arr[idx].diff = 'desc'
-              } else if (v0.rank > v1.rank) {
-                arr[idx].diff = 'asc'
-              }
+      // Assign rank change
+      ret.forEach((v0, idx, arr)=>{
+        let flag = true
+        this.rank.forEach((v1)=>{
+          if (v0.userId === v1.userId) {
+            flag = false
+            if (v0.rank < v1.rank) {
+              arr[idx].change = 'up'
+            } else if (v0.rank > v1.rank) {
+              arr[idx].change = 'down'
             }
-          })
+          }
         })
-      }
+        if (flag) {
+          arr[idx].change = 'up'
+        }
+      })
 
       this.rank = ret
     },
 
-    // Auto focus user
-    autoFocus() {
-      this.genNewRank()
-      return
-      // Check timestamp
-      if (this.lastFocus && this.focusUserId === null && new Date().getTime() - this.lastFocus < 10000) {
+    // Auto focus user with patch
+    autoFocus(patch) {
+      // Check timestamp & focus status
+      if (new Date().getTime() - this.lastFocus < 10000 || this.focusUserId !== null) {
+        this.patchRawStatus(patch)
         this.genNewRank()
         return
       }
 
       // Find difference
-      if (this.rawStatus === null) {
-        this.genNewRank()
-        return
-      }
-      let userId = null
-      let updatedStatus = null
-      Object.keys(this.newRawStatus).forEach((v)=>{
-        if (userId === null && this.rawStatus[v] !== undefined) {
+      let tUserId = null
+      let tStatus = null
+      for (const userId in patch) {
+        if (patch.hasOwnProperty(userId) && this.rank.find((v)=>v.userId === userId) !== undefined) {
+          const p = patch[userId]
           for (let i = 0; i < this.info.problems; ++i) {
-            if ((this.newRawStatus[v][i].result === 1 || this.newRawStatus[v][i].result === 4) && 
-              this.rawStatus[v][i].result !== this.newRawStatus[v][i].result) 
-            {
-              userId = v
-              updatedStatus = this.newRawStatus[v]
+            if (['first_blood', 'accepted'].includes(p[i].result)) {
+              tUserId = userId
+              tStatus = p
               break
             }
           }
         }
-      })
-      if (userId === null) {
+        if (tUserId !== null) {
+          break
+        }
+      }
+      if (tUserId === null) {
+        this.patchRawStatus(patch)
         this.genNewRank()
         return
       }
@@ -268,8 +305,9 @@ export const useContestStore = defineStore('contest', {
       // Set focus
       this.$patch({
         lastFocus: new Date().getTime(),
-        focusUserId: userId,
-        focusUpdate: updatedStatus
+        focusUserId: tUserId,
+        focusPatch: tStatus,
+        fullPatch: patch
       })
     }
   }

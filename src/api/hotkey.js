@@ -16,6 +16,9 @@ const register = ()=>{
       case 'x':
         cruise.speedDown()
         break
+      case 'z':
+        cruise.toggleMode()
+        break
       // Notification
       case 's':
         useNotifyStore().setSilent(true)
