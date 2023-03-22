@@ -24,6 +24,8 @@ const resultClass = computed(()=>{
       return ['bg-gray-500']
     case 'rejudge':
       return ['bg-purple-500']
+    default:
+      return ['bg-white']
   }
 })
 const statusText = computed(()=>{
@@ -39,10 +41,17 @@ const statusText = computed(()=>{
       return props.tries + '+' + props.frozenTries
     case 'rejudge':
       return 'Rejudge'
+    default:
+      return '\u2003'
   }
 })
 </script>
 
 <template>
-  <div class="mx-2 my-1 py-1 rounded text-center text-white w-20" :class="resultClass">{{ statusText }}</div>
+  <div 
+    class="mx-2 my-1 py-1 rounded text-center text-white w-20"
+    :class="resultClass"
+  >
+    {{ statusText }}
+  </div>
 </template>

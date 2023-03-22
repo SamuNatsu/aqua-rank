@@ -1,13 +1,17 @@
 /* Contest store */
+import _ from 'lodash'
 import axios from 'axios'
 import { defineStore } from 'pinia'
 import { useNotifyStore } from './notify'
 
+// No need for reactive
+let firstBlood = []
+let rawStatus = {}
+let rawRank = {}
+
 export const useContestStore = defineStore('contest', {
   state: ()=>({
     info: null,
-    rawStatus: {},
-    firstBlood: [],
     rank: [],
     lastFocus: 0,
     focusUserId: null,
@@ -146,11 +150,11 @@ export const useContestStore = defineStore('contest', {
             }
 
             // Check first blood
-            if (this.firstBlood.includes(id)) {
+            if (firstBlood.includes(id)) {
               ret[userId][id].result = 'accepted'
             } else {
               ret[userId][id].result = 'first_blood'
-              this.firstBlood.push(id)
+              firstBlood.push(id)
             }
 
             ret[userId][id].tries++
@@ -184,93 +188,99 @@ export const useContestStore = defineStore('contest', {
 
     // Patch raw status
     patchRawStatus(patch) {
-      const isAccepted = (uid, pid)=>{
-        return ['first_blood', 'accepted'].includes(this.rawStatus[uid][pid].result)
-      }
-
-      // Enumerate patch userId
-      for (const userId in patch) {
-        if (patch.hasOwnProperty(userId)) {
-          // If userId exists in raw status
-          if (this.rawStatus.hasOwnProperty(userId)) {
-            for (let i = 0; i < this.info.problems; ++i) {
-              if (isAccepted(userId, i)) {
-                continue
-              }
-
-              const s = this.rawStatus[userId][i]
-              const p = patch[userId][i]
-
-              s.result = p.result
-              s.tries += p.tries
-              s.penalty += p.penalty
-              s.frozenTries += p.frozenTries
+      // Enumerate patch
+      _.forOwn(patch, (patchStatus, userId)=>{
+        // User exists
+        if (rawStatus.hasOwnProperty(userId)) {
+          // Enumerate problems
+          rawStatus[userId].forEach((oldStatus, index, refStatus)=>{
+            // Skip accepted result
+            if (['first_blood', 'accepted'].includes(oldStatus.result)) {
+              return
             }
-          } else {
-            this.rawStatus[userId] = patch[userId]
-          }
+
+            // Patch
+            refStatus[index].result = patchStatus[index].result
+            refStatus[index].tries += patchStatus[index].tries
+            refStatus[index].penalty += patchStatus[index].penalty
+            refStatus[index].frozenTries += patchStatus[index].frozenTries
+          })
+        // User not exists
+        } else {
+          rawStatus[userId] = patchStatus
         }
-      }
+      })
     },
 
     // Generate rank
     genNewRank() {
-      let ret = []
-
       // Generate competitor info list
-      for (const userId in this.rawStatus) {
-        if (this.rawStatus.hasOwnProperty(userId)) {
-          const s = this.rawStatus[userId]
-          let solved = 0
-          let penalty = 0
+      let ret = []
+      _.forOwn(rawStatus, (status, userId)=>{
+        let solved = 0
+        let penalty = 0
 
-          s.forEach((v)=>{
-            penalty += (v.result === 'first_blood' || v.result === 'accepted' ? v.penalty : 0)
-            solved += (v.result === 'first_blood' || v.result === 'accepted' ? 1 : 0)
-          })
+        status.filter((problem)=>{
+          return ['first_blood', 'accepted'].includes(problem.result) 
+        }).forEach((problem)=>{
+          solved++
+          penalty += problem.penalty
+        })
 
-          ret.push({
-            userId,
-            solved,
-            penalty,
-            status: s
-          })
-        }
-      }
-
-      // Sort & assign rank
-      ret = ret.sort((a, b)=>{
-        return a.solved === b.solved ?
-          (a.penalty === b.penalty ? (a.userId < b.userId ? -1 : 1) : a.penalty - b.penalty) :
-          b.solved - a.solved
+        ret.push({
+          userId,
+          solved,
+          penalty,
+          status
+        })
       })
-      ret.forEach((_, idx, arr)=>{
-        arr[idx].rank = idx + 1
+
+      // Sort
+      ret = ret.sort((a, b)=>{
+        // Solve more > Penalty less > Name lexicographical order less
+        if (a.solved === b.solved) {
+          if (a.penalty === b.penalty) {
+            return a.userId < b.userId ? -1 : 1
+          } else {
+            return a.penalty - b.penalty
+          }
+        } else {
+          return b.solved - a.solved
+        }
+      })
+
+      // Assign rank
+      const newRawRank = {}
+      ret.forEach((value, index, refRet)=>{
+        refRet[index].rank = index + 1
+        newRawRank[value.userId] = index + 1
       })
 
       // Assign rank change
-      ret.forEach((v0, idx, arr)=>{
-        let flag = true
-        this.rank.forEach((v1)=>{
-          if (v0.userId === v1.userId) {
-            flag = false
-            if (v0.rank < v1.rank) {
-              arr[idx].change = 'up'
-            } else if (v0.rank > v1.rank) {
-              arr[idx].change = 'down'
-            }
+      ret.forEach((value, index, refRet)=>{
+        // If user already exists in rank
+        if (rawRank.hasOwnProperty(value.userId)) {
+          if (value.rank < rawRank[value.userId]) {
+            refRet[index].change = 'up'
+          } else if (value.rank > rawRank[value.userId]) {
+            refRet[index].chage = 'down'
           }
-        })
-        if (flag) {
-          arr[idx].change = 'up'
+        // User new to rank
+        } else {
+          refRet[index].change = 'up'
         }
       })
 
+      rawRank = newRawRank
       this.rank = ret
     },
 
     // Auto focus user with patch
     autoFocus(patch) {
+        this.patchRawStatus(patch)
+        this.genNewRank()
+        return
+
       // Check timestamp & focus status
       if (new Date().getTime() - this.lastFocus < 10000 || this.focusUserId !== null) {
         this.patchRawStatus(patch)

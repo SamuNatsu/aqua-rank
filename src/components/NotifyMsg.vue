@@ -1,25 +1,51 @@
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 import { useNotifyStore } from '../store/notify'
 
 // Components
 import ProgressRingVue from './ProgressRing.vue'
 
+// Images
+import iconInfo from '../assets/img/info.svg'
+import iconWarn from '../assets/img/warning.svg'
+import iconError from '../assets/img/error.svg'
+
+// Stores
+const notify = useNotifyStore()
+
 // Properties
-const props = defineProps({ data: Object })
+const props = defineProps({
+  type: String,
+  msg: String
+})
 
 // Reactive
 const progress = ref(0)
 
+// Computed
+const iconImg = computed(()=>{
+  switch (props.type) {
+    case 'info':
+      return iconInfo
+    case 'warn':
+      return iconWarn
+    case 'error':
+      return iconError
+    default:
+      return ''
+  }
+})
+
 // Animate
 const step = ()=>{
   progress.value += 5
+
   if (progress.value < 100) {
     progress.value += 5
     setTimeout(step, 100)
   } else {
     progress.value = 100
-    setTimeout(()=>useNotifyStore().pop(), 350)
+    setTimeout(()=>notify.pop(), 400)
   }
 }
 setTimeout(step, 100)
@@ -32,12 +58,10 @@ setTimeout(step, 100)
         <progress-ring-vue :radius="20" :progress="progress" :stroke="3"/>
       </div>
       <div>
-        <img v-if="data.type === 'info'" src="../assets/img/info.svg" class="info h-6 w-6"/>
-        <img v-if="data.type === 'warn'" src="../assets/img/warning.svg" class="warn h-6 w-6"/>
-        <img v-if="data.type === 'error'" src="../assets/img/error.svg" class="error h-6 w-6"/>
+        <img class="h-6 w-6" :class="[type]" :src="iconImg">
       </div>
     </div>
-    <div class="text-white w-40">{{ data.msg }}</div>
+    <div class="text-white w-40">{{ msg }}</div>
   </div>
 </template>
 

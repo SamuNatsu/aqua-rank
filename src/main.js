@@ -9,7 +9,7 @@ import pinia from './store'
 import 'normalize.css'
 import './style.css'
 
-// Import application view
+// Import application component
 import App from './App.vue'
 
 // Create application

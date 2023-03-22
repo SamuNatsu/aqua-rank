@@ -1,5 +1,6 @@
 <script setup>
 import { ref, watch, onMounted } from 'vue'
+import _ from 'lodash'
 import { useContestStore } from '../store/contest'
 import cruise from '../api/cruise'
 
@@ -53,8 +54,6 @@ const setShadow = ()=>{
 }
 const focus = ()=>{
   const rect = element.value.getBoundingClientRect()
-
-  // Scroll to element
   cruise.stop(true)
   scrollTo(0, scrollY + rect.top + (rect.height - innerHeight) / 2)
 }
@@ -66,17 +65,14 @@ watch(
   ()=>{
     if (contest.focusUserId === props.userId) {
       // Patch old status
-      const pStatus = JSON.parse(JSON.stringify(localStatus.value))
-      const isAccepted = (pid)=>{
-        return ['first_blood', 'accepted'].includes(pStatus[pid].result)
-      }
+      const pStatus = _.cloneDeep(localStatus.value)
       for (let i = 0; i < contest.focusPatch.length; ++i) {
-        if (isAccepted(i) || contest.focusPatch[i].result === 'none') {
-          continue
-        }
-
         const s = pStatus[i]
         const p = contest.focusPatch[i]
+
+        if (['first_blood', 'accepted'].includes(s.result) || p.result === 'none') {
+          continue
+        }
 
         s.result = p.result
         s.tries += p.tries
@@ -91,12 +87,12 @@ watch(
       new Promise(async (resolve)=>{
         for (let i = 0; i < 4; ++i) {
           localStatus.value = pStatus
-          await delay(400)
+          await delay(300)
           localStatus.value = props.status
-          await delay(400)
+          await delay(300)
         }
         localStatus.value = pStatus
-        await delay(200)
+        await delay(300)
 
         contest.patchRawStatus(contest.fullPatch)
         contest.genNewRank()
@@ -109,7 +105,7 @@ watch(
   }
 )
 
-// Livecircle
+// Live circle
 onMounted(setShadow)
 </script>
 
@@ -121,8 +117,8 @@ onMounted(setShadow)
   >
     <!-- Focus light -->
     <template v-if="contest.focusUserId === userId">
-      <div class="absolute animate-ping bg-green-400 h-3 left-2 rounded-full top-2 w-3"></div>
-      <div class="absolute bg-green-400 h-3 left-2 rounded-full top-2 w-3"></div>
+      <div class="ping-dot animate-ping"></div>
+      <div class="ping-dot"></div>
     </template>
 
     <!-- Rank & user ID -->
@@ -156,5 +152,9 @@ onMounted(setShadow)
 
 .up {
   @apply shadow-md shadow-green-400
+}
+
+.ping-dot {
+  @apply absolute bg-green-400 h-3 left-2 rounded-full top-2 w-3
 }
 </style>

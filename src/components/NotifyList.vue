@@ -1,18 +1,21 @@
 <script setup>
-import { storeToRefs } from 'pinia'
 import { useNotifyStore } from '../store/notify'
 
 // Components
 import NotifyMsgVue from './NotifyMsg.vue'
 
 // Get store
-const notifyStore = useNotifyStore()
-const { queue } = storeToRefs(notifyStore)
+const notify = useNotifyStore()
 </script>
 
 <template>
   <transition-group name="notify" tag="div" class="fixed right-0 top-0 z-50">
-    <notify-msg-vue v-for="i in queue" :key="i.timestamp" :data="i"/>
+    <notify-msg-vue
+      v-for="i in notify.queue"
+      :key="i.timestamp"
+      :type="i.type"
+      :msg="i.msg"
+    />
   </transition-group>
 </template>
 
