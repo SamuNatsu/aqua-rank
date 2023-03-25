@@ -26,6 +26,10 @@ const register = ()=>{
       case 'd':
         useNotifyStore().setSilent(false)
         break
+      // Statistics
+      case 'i':
+        useStatusStore().toggleStatistics()
+      break
       // Help
       case 'q':
         useStatusStore().toggleHelp()

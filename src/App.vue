@@ -5,8 +5,9 @@ import { useContestStore } from './store/contest'
 
 // Components
 import CompetitorRowVue from './components/CompetitorRow.vue'
-import HelpPageVue from './components/HelpPage.vue'
 import NotifyListVue from './components/NotifyList.vue'
+import PopUpHelpVue from './components/pop-ups/PopUpHelp.vue'
+import PopUpStatisticsVue from './components/pop-ups/PopUpStatistics.vue'
 
 // Stores
 const contest = useContestStore()
@@ -51,8 +52,9 @@ contest
   <!-- Notify -->
   <notify-list-vue/>
 
-  <!-- Help page -->
-  <help-page-vue/>
+  <!-- Pop-ups -->
+  <pop-up-help-vue/>
+  <pop-up-statistics-vue/>
 
   <!-- Title -->
   <div class="my-10">
