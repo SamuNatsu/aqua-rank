@@ -1,324 +1,185 @@
 /* Contest store */
-import _ from 'lodash'
-import axios from 'axios'
 import { defineStore } from 'pinia'
-import { useNotifyStore } from './notify'
+import _ from 'lodash'
+import { useApiStore } from './api'
 
-// No need for reactive
-let firstBlood = []
-let rawStatus = {}
-let rawRank = {}
+// Non reactive variables
+let problemNum = 0
+let problemIdList = []
+let firstBloodList = []
+let teamInfoMap = {}          // <team_id>_<contest_id> => team_info
+let teamStatusMap = {}
 
+// Functions
+const getSqlTime = (date)=>{
+  let Y = date.getFullYear()
+  let M = date.getMonth() + 1
+  let D = date.getDate()
+  let h = date.getHours()
+  let m = date.getMinutes()
+  let s = date.getSeconds()
+
+  if (M < 10)
+    M = '0' + M
+  if (D < 10)
+    D = '0' + D
+  if (h < 10)
+    h = '0' + h
+  if (m < 10)
+    m = '0' + m
+  if (s < 10)
+    s = '0' + s
+
+  return `${Y}-${M}-${D} ${h}:${m}:${s}`
+}
+
+// Export
 export const useContestStore = defineStore('contest', {
   state: ()=>({
-    info: null,
-    rank: [],
-    lastFocus: 0,
-    focusUserId: null,
-    focusPatch: null,
-    fullPatch: null
+    title: "",
+    startTime: "2022-12-07 18:00:00",
+    endTime: "",
+    contestList: "",
+    mergeList: [],
+    lastUpdateTime: null,
+    rank: []
   }),
-  getters: {
-    getName() {
-      return this.info === null ? 'Aqua Rank' : this.info.name
+  actions: {
+    async init() {
+      const api = useApiStore()
+
+      // Get problem list
+      let res = await api.fetchProblemList(this.mergeList)
+      if (res.code !== 0)
+        return res
+
+      // Group problems by contest ID
+      const ctt = {}  // contest_id => [problem]
+      res.data.forEach((problem)=>{
+        if (!_.has(ctt, problem.contest_id))
+          ctt[problem.contest_id] = []
+
+        ctt[problem.contest_id].push(problem)
+      })
+
+      // Check if all required contests are available
+      const kctt = _.keys(ctt)  // [contest_id]
+      const xctt = _.xor(this.mergeList, kctt)
+      if (xctt.length !== 0)
+        return { code: 1, msg: 'Contest ' + xctt.join(', ') + ' not found' }
+
+      // Check if all contests' problems are the same
+      for (let i = 1; i < kctt.length; ++i) {
+        if (ctt[kctt[i]].length !== ctt[kctt[0]].length)
+          return { code: 1, msg: 'Merge failed, difference found' }
+
+        for (let j = 0; j < ctt[kctt[0]].length; ++j)
+          if (ctt[kctt[i]][j].problem_id !== ctt[kctt[0]][j].problem_id)
+            return { code: 1, msg: 'Merge failed, difference found' }
+      }
+
+      // Save problem information
+      problemNum = ctt[kctt[0]].length
+      ctt[kctt[0]].forEach((problem)=>{
+        problemIdList.push(problem.problem_id)
+      })
+
+      // Get team list
+      res = await api.fetchTeamList(this.mergeList)
+      if (res.code !== 0)
+        return res
+
+      // Save team information
+      res.data.forEach((team)=>{
+        teamInfoMap[team.team_id + '_' + team.contest_id] = team
+      })
+
+      // Get history solutions
+      res = await api.fetchSolutionList(this.mergeList, getSqlTime(new Date(0)))
+      if (res.code !== 0)
+        return res
+      
+      // Generate current rank
+      const patch = this.genPatch(res.data)
+      console.log(patch)
     },
-    getSpan() {
-      return this.info === null ? '' : `${new Date(this.info.timestamp).toLocaleString()} ~ ${new Date(this.info.timestamp + this.info.span).toLocaleString()}`
+    genPatch(solutions) {
+      const ret = {}
+      const template = new Array(problemNum).fill(null)
+      template.forEach((__, index, ref)=>{
+        ref[index] = _.cloneDeep({
+          result: 'none',
+          tries: 0,
+          penalty: 0,
+          frozenTries: 0
+        })
+      })
+
+      solutions.forEach((solution)=>{
+        const teamKey = solution.team_id + '_' + solution.contest_id
+
+        // Check team not presented in patch
+        if (!_.has(ret, teamKey))
+          ret[teamKey] = _.cloneDeep(template)
+
+        const problemIdx = problemIdList.indexOf(solution.problem_id)
+        const isSkip = ()=>{
+          return ['first_blood', 'accepted'].includes(ret[teamKey][problemIdx].result)
+        }
+
+        // Update patch
+        switch (solution.result) {
+          case 4:   // AC
+            if (isSkip())
+              break
+
+            if (firstBloodList.includes(problemIdx))
+              ret[teamKey][problemIdx].result = 'accepted'
+            else {
+              firstBloodList.push(problemIdx)
+              ret[teamKey][problemIdx].result = 'first_blood'
+            }
+
+            ret[teamKey][problemIdx].tries++
+            ret[teamKey][problemIdx].penalty += Math.trunc((new Date(solution.in_date).getTime() - new Date(this.startTime).getTime()) / 1000 / 60)
+            break
+          case 127: // Frozen
+            if (isSkip())
+              break
+
+            ret[teamKey][problemIdx].result = 'frozen'
+            ret[teamKey][problemIdx].frozenTries++
+            break
+          case 1:   // Pending Rejudging
+          case 3:   // Running Rejudging
+            ret[teamKey][problemIdx].result = 'rejudge'
+            ret[teamKey][problemIdx]
+            break
+          case 5:   // PE
+          case 6:   // WA
+          case 7:   // TLE
+          case 8:   // MLE
+          case 9:   // OLE
+          case 10:  // RE
+          case 11:  // CE
+            if (isSkip())
+              break
+
+            ret[teamKey][problemIdx].result = 'wrong_answer'
+            ret[teamKey][problemIdx].tries++
+            ret[teamKey][problemIdx].penalty += 20
+            break
+          case 13:  // Tested
+          case 100: // Unknown
+          case 0:   // Pending
+          case 2:   // Compiling
+            break
+        }
+      })
+
+      this.lastUpdateTime = new Date().toUTCString()
+      return ret
     }
   },
-  actions: {
-    // Fetch contest info
-    async fetchInfo(force) {
-      // Check force & exists
-      if (!force && this.info !== null) {
-        return
-      }
-      if (force) {
-        useNotifyStore().push('warn', 'Force refetch contest info')
-      }
-
-      // Fetch from remote
-      try {
-        this.info = (await axios.get('/contest.json')).data
-      }
-      catch (err) {
-        throw err
-      }
-
-      // Change title
-      document.title = `${this.info.name} | Aqua Rank`
-    },
-
-    // Fetch raw data
-    // TODO: Need API binding
-    async fetchSubmissions(timestamp) {
-      let data = []
-      if (timestamp === undefined) {  // Fetch all
-        let tmp = null
-        do {
-          tmp = await axios({
-            method: 'get',
-            baseURL: null,
-            url: '/api/status_ajax',
-            headers: {
-              'X-Requested-With': 'XMLHttpRequest'
-            },
-            params: {
-              cid: 1038,
-              sort: 'solution_id_show',
-              order: 'desc',
-              offset: data.length,
-              limit: 20,
-              problem_id: '',
-              user_id: '',
-              solution_id: '',
-              language: -1,
-              result: -1
-            }
-          })
-          data = data.concat(tmp.data.rows)
-        } while (data.length < tmp.data.total)
-      } else {  // Fetch after timestamp
-        if (timestamp > 519) {
-          return []
-        }
-
-        data = (await axios({
-          method: 'get',
-          baseURL: null,
-          url: '/api/status_ajax',
-          headers: {
-            'X-Requested-With': 'XMLHttpRequest'
-          },
-          params: {
-            cid: 1038,
-            sort: 'solution_id_show',
-            order: 'desc',
-            offset: 500 - timestamp,
-            limit: 20,
-            problem_id: '',
-            user_id: '',
-            solution_id: '',
-            language: -1,
-            result: -1
-          }
-        })).data.rows
-      }
-
-      // Preprocess
-      data = data.sort((a, b)=>a.solution_id - b.solution_id)
-
-      return data
-    },
-
-    // Generate new raw status
-    // TODO: Need API binding
-    genRawStatusPatch(submissions) {
-      const ret = {}
-      const problems = this.info.problems
-
-      // Patch raw status
-      submissions.forEach((v)=>{
-        // Get user id
-        const userId = v.user_id
-
-        // User not exists
-        if (ret[userId] === undefined) {
-          ret[userId] = []
-          for (let i = 0; i < problems; ++i) {
-            ret[userId].push({
-              problemId: i,
-              result: 'none',
-              tries: 0,
-              penalty: 0,
-              frozenTries: 0
-            })
-          }
-        }
-
-        // Get problem id
-        const id = /<[^>]*>([^<]*?)<[^>]*>/.exec(v.problem_id)[1].charCodeAt(0) - 65
-
-        // Process result
-        const isAccepted = ()=>{
-          return ['first_blood', 'accepted'].includes(ret[userId][id].result)
-        }
-        switch (v.result) {
-          case 4: { // Accepted
-            if (isAccepted()) {
-              break
-            }
-
-            // Check first blood
-            if (firstBlood.includes(id)) {
-              ret[userId][id].result = 'accepted'
-            } else {
-              ret[userId][id].result = 'first_blood'
-              firstBlood.push(id)
-            }
-
-            ret[userId][id].tries++
-            ret[userId][id].penalty += Math.trunc(((new Date(v.in_date).getTime()) - this.info.timestamp) / 1000 / 60)
-            break
-          }
-          case '-': { // Frozen
-            if (isAccepted()) {
-              break
-            }
-
-            ret[userId][id].result = 'frozen'
-            ret[userId][id].frozenTries++
-            break
-          }
-          default: { // Other as WA
-            if (isAccepted()) {
-              break
-            }
-
-            ret[userId][id].result = 'wrong_answer'
-            ret[userId][id].tries++
-            ret[userId][id].penalty += 20
-            break
-          }
-        }
-      })
-
-      return ret
-    },
-
-    // Patch raw status
-    patchRawStatus(patch) {
-      // Enumerate patch
-      _.forOwn(patch, (patchStatus, userId)=>{
-        // User exists
-        if (rawStatus.hasOwnProperty(userId)) {
-          // Enumerate problems
-          rawStatus[userId].forEach((oldStatus, index, refStatus)=>{
-            // Skip accepted result
-            if (['first_blood', 'accepted'].includes(oldStatus.result)) {
-              return
-            }
-
-            // Patch
-            refStatus[index].result = patchStatus[index].result
-            refStatus[index].tries += patchStatus[index].tries
-            refStatus[index].penalty += patchStatus[index].penalty
-            refStatus[index].frozenTries += patchStatus[index].frozenTries
-          })
-        // User not exists
-        } else {
-          rawStatus[userId] = patchStatus
-        }
-      })
-    },
-
-    // Generate rank
-    genNewRank() {
-      // Generate competitor info list
-      let ret = []
-      _.forOwn(rawStatus, (status, userId)=>{
-        let solved = 0
-        let penalty = 0
-
-        status.filter((problem)=>{
-          return ['first_blood', 'accepted'].includes(problem.result) 
-        }).forEach((problem)=>{
-          solved++
-          penalty += problem.penalty
-        })
-
-        ret.push({
-          userId,
-          solved,
-          penalty,
-          status
-        })
-      })
-
-      // Sort
-      ret = ret.sort((a, b)=>{
-        // Solve more > Penalty less > Name lexicographical order less
-        if (a.solved === b.solved) {
-          if (a.penalty === b.penalty) {
-            return a.userId < b.userId ? -1 : 1
-          } else {
-            return a.penalty - b.penalty
-          }
-        } else {
-          return b.solved - a.solved
-        }
-      })
-
-      // Assign rank
-      const newRawRank = {}
-      ret.forEach((value, index, refRet)=>{
-        refRet[index].rank = index + 1
-        newRawRank[value.userId] = index + 1
-      })
-
-      // Assign rank change
-      ret.forEach((value, index, refRet)=>{
-        // If user already exists in rank
-        if (rawRank.hasOwnProperty(value.userId)) {
-          if (value.rank < rawRank[value.userId]) {
-            refRet[index].change = 'up'
-          } else if (value.rank > rawRank[value.userId]) {
-            refRet[index].chage = 'down'
-          }
-        // User new to rank
-        } else {
-          refRet[index].change = 'up'
-        }
-      })
-
-      rawRank = newRawRank
-      this.rank = ret
-    },
-
-    // Auto focus user with patch
-    autoFocus(patch) {
-        this.patchRawStatus(patch)
-        this.genNewRank()
-        return
-
-      // Check timestamp & focus status
-      if (new Date().getTime() - this.lastFocus < 10000 || this.focusUserId !== null) {
-        this.patchRawStatus(patch)
-        this.genNewRank()
-        return
-      }
-
-      // Find difference
-      let tUserId = null
-      let tStatus = null
-      for (const userId in patch) {
-        if (patch.hasOwnProperty(userId) && this.rank.find((v)=>v.userId === userId) !== undefined) {
-          const p = patch[userId]
-          for (let i = 0; i < this.info.problems; ++i) {
-            if (['first_blood', 'accepted'].includes(p[i].result)) {
-              tUserId = userId
-              tStatus = p
-              break
-            }
-          }
-        }
-        if (tUserId !== null) {
-          break
-        }
-      }
-      if (tUserId === null) {
-        this.patchRawStatus(patch)
-        this.genNewRank()
-        return
-      }
-
-      // Set focus
-      this.$patch({
-        lastFocus: new Date().getTime(),
-        focusUserId: tUserId,
-        focusPatch: tStatus,
-        fullPatch: patch
-      })
-    }
-  }
+  persist: true
 })

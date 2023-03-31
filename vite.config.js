@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'https://soj.csgrandeur.cn/csgoj/Contest/',
+        target: 'https://soj.csgrandeur.cn/',
         changeOrigin: true,
         rewrite: (path)=>path.replace(/^\/api/, '')
       }
