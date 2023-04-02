@@ -5,12 +5,14 @@ import { createRouter, createWebHistory } from 'vue-router'
 const routes = [
   {
     path: '/',
-    name: 'rank',
+    component: ()=>import('../views/Index.vue')
+  },
+  {
+    path: '/rank',
     component: ()=>import('../views/Rank.vue')
   },
   {
     path: '/settings',
-    name: 'settings',
     component: ()=>import('../views/Settings.vue')
   }
 ]

@@ -1,7 +1,5 @@
 /* Trace module */
-import { useNotifyStore } from '../store/notify'
 
-// Cruise system
 const data = {
   handle: null,
   startTimestamp: null,
@@ -21,11 +19,6 @@ const start = (speed, silent)=>{
   const body = document.body
   const topAnchor = document.querySelector('#rank-top')
   data.speed = Math.max(20, speed)
-
-  // Send notification
-  if (silent !== true) {
-    useNotifyStore().push('info', 'Start cruising')
-  }
 
   // Start cruising
   const step = (timestamp)=>{
@@ -65,10 +58,6 @@ const start = (speed, silent)=>{
 const stop = (silent)=>{
   // Check handle
   if (data.handle !== null) {
-    if (silent !== true) {
-      useNotifyStore().push('info', 'Stop cruising')
-    }
-
     cancelAnimationFrame(data.handle)
     data.handle = null
     data.startTimestamp = null
@@ -89,7 +78,6 @@ const speedUp = ()=>{
   // Check handle
   if (data.handle !== null) {
     data.speed += 20
-    useNotifyStore().push('info', `Increase cruising speed to ${data.speed}`)
   }
 }
 
@@ -100,18 +88,14 @@ const speedDown = ()=>{
     if (data.speed < 20) {
       data.speed = 20
     }
-    useNotifyStore().push('info', `Decrease cruising speed to ${data.speed}`)
   }
 }
 
 const toggleMode = ()=>{
-  if (data.mode === 0) {
+  if (data.mode === 0)
     data.mode = 1
-    useNotifyStore().push('info', 'Round-trip mode')
-  } else {
+  else
     data.mode = 0
-    useNotifyStore().push('info', 'Sequence mode')
-  }
   data.direction = 1
 }
 

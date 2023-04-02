@@ -22,8 +22,8 @@ const resultClass = computed(()=>{
       return ['bg-red-500']
     case 'frozen':
       return ['bg-gray-500']
-    case 'rejudge':
-      return ['bg-purple-500']
+    case 'pending':
+      return ['bg-yellow-500']
     default:
       return ['bg-white']
   }
@@ -39,8 +39,8 @@ const statusText = computed(()=>{
       return props.tries
     case 'frozen':
       return props.tries + '+' + props.frozenTries
-    case 'rejudge':
-      return 'Rejudge'
+    case 'pending':
+      return props.tries
     default:
       return '\u2003'
   }
@@ -48,10 +48,7 @@ const statusText = computed(()=>{
 </script>
 
 <template>
-  <div 
-    class="mx-2 my-1 py-1 rounded text-center text-white w-20"
-    :class="resultClass"
-  >
+  <div class="mx-2 my-1 py-1 rounded text-center text-white w-20" :class="resultClass">
     {{ statusText }}
   </div>
 </template>

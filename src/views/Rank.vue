@@ -1,65 +1,24 @@
 <script setup>
 import { ref } from 'vue'
-import { storeToRefs } from 'pinia'
-import { useContestStore } from './store/contest'
+import { useContestStore } from '../store/contest'
 
 // Components
-import CompetitorRowVue from './components/CompetitorRow.vue'
-import NotifyListVue from './components/NotifyList.vue'
-import PopUpHelpVue from './components/pop-ups/PopUpHelp.vue'
-import PopUpStatisticsVue from './components/pop-ups/PopUpStatistics.vue'
+import CompetitorRowVue from '../components/CompetitorRow.vue'
 
 // Stores
 const contest = useContestStore()
-const { rank } = storeToRefs(contest)
 
 // Reactive
 const exception = ref(null)
 
-// Asynchronize
-contest
-  .fetchInfo()
-  .then(()=>{
-    return contest.fetchSubmissions(0)
-  })
-  .then((data)=>{
-    const patch = contest.genRawStatusPatch(data)
-    contest.patchRawStatus(patch)
-    contest.genNewRank()
-
-    let timestamp = 20
-    const step = ()=>{
-      contest
-        .fetchSubmissions(timestamp)
-        .then((data)=>{
-          const patch = contest.genRawStatusPatch(data)
-          //contest.patchRawStatus(patch)
-          contest.autoFocus(patch)
-
-          timestamp += 20
-          setTimeout(step, 5000)
-        })
-    }
-    setTimeout(step, 5000)
-  })
-  .catch((err)=>{
-    console.log(err)
-    exception.value = err.message
-  })
+contest.startLoop()
 </script>
 
 <template>
-  <!-- Notify -->
-  <notify-list-vue/>
-
-  <!-- Pop-ups -->
-  <pop-up-help-vue/>
-  <pop-up-statistics-vue/>
-
   <!-- Title -->
   <div class="my-10">
-    <div class="font-bold text-3xl text-center text-white">{{ contest.getName }}</div>
-    <div class="font-mono my-4 text-center text-white">{{ contest.getSpan }}</div>
+    <div class="font-bold text-3xl text-center text-white">{{ contest.title }}</div>
+    <div class="font-mono my-4 text-center text-white">{{ contest.startTime }} ~ {{ contest.endTime }}</div>
   </div>
 
   <!-- Header -->
@@ -75,17 +34,17 @@ contest
   </div>
 
   <!-- Competitors -->
-  <transition-group v-if="rank !== null" name="competitors">
+  <transition-group v-if="contest.filteredRank !== null" name="competitors">
     <competitor-row-vue
-      v-for="i in rank" 
-      :key="i.userId"
+      v-for="i in contest.filteredRank" 
+      :key="i.id"
       :rank="i.rank"
-      :user-id="i.userId"
+      :name="i.name"
+      :school="i.school"
       :solved="i.solved"
       :penalty="i.penalty"
       :change="i.change"
       :status="i.status"
-      :info="i"
     />
   </transition-group>
   <div v-else-if="exception === null" class="msg">

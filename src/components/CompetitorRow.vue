@@ -9,8 +9,10 @@ import StatusTagVue from './StatusTag.vue'
 
 // Properties
 const props = defineProps({
+  key: String,
   rank: Number,
-  userId: String,
+  name: String,
+  school: String,
   solved: Number,
   penalty: Number,
   change: String,
@@ -63,49 +65,32 @@ watch(()=>props.rank, setShadow)
 watch(
   ()=>contest.lastFocus,
   ()=>{
-    if (contest.focusUserId === props.userId) {
-      // Patch old status
-      const pStatus = _.cloneDeep(localStatus.value)
-      for (let i = 0; i < contest.focusPatch.length; ++i) {
-        const s = pStatus[i]
-        const p = contest.focusPatch[i]
-
-        if (['first_blood', 'accepted'].includes(s.result) || p.result === 'none') {
-          continue
-        }
-
-        s.result = p.result
-        s.tries += p.tries
-        s.penalty += p.penalty
-        s.frozenTries += p.frozenTries
-      }
-
+    if (contest.focusKey === props.key) {
       // Focus
       focus()
 
       // Animate
       new Promise(async (resolve)=>{
         for (let i = 0; i < 4; ++i) {
-          localStatus.value = pStatus
+          localStatus.value = contest.focusStatus
           await delay(300)
           localStatus.value = props.status
           await delay(300)
         }
-        localStatus.value = pStatus
+        localStatus.value = contest.focusStatus
         await delay(300)
 
-        contest.patchRawStatus(contest.fullPatch)
-        contest.genNewRank()
+        contest.update()
         localStatus.value = props.status
         cruise.start(cruise.getSpeed(), true)
-        contest.focusUserId = null
+        contest.focusKey = null
         resolve()
       })
     }
   }
 )
 
-// Live circle
+// Live cycle
 onMounted(setShadow)
 </script>
 
@@ -116,15 +101,18 @@ onMounted(setShadow)
     ref="element"
   >
     <!-- Focus light -->
-    <template v-if="contest.focusUserId === userId">
+    <template v-if="contest.focusKey === key">
       <div class="ping-dot animate-ping"></div>
       <div class="ping-dot"></div>
     </template>
 
-    <!-- Rank & user ID -->
-    <div class="flex w-1/6">
+    <!-- Rank & user info -->
+    <div class="flex items-center w-1/6">
       <div class="font-bold font-mono text-zinc-100 w-1/3">#{{ rank }}</div>
-      <div class="font-bold text-center text-white w-2/3">{{ userId }}</div>
+      <div class="flex flex-col text-center text-white w-2/3">
+        <div class="font-bold">{{ name }}</div>
+        <div class="text-sm text-gray-400">{{ school }}</div>
+      </div>
     </div>
 
     <!-- Status tags -->
