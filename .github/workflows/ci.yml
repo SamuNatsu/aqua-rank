@@ -11,30 +11,34 @@ on:
 
 jobs:
   build:
-
     runs-on: ubuntu-latest
-
     strategy:
       matrix:
         node-version: [14.x, 16.x, 18.x]
-
     steps:
-    - name: Checkout master branch
+    - name: Checkout branch
       uses: actions/checkout@v3
-    
     - name: Setup pnpm
       uses: pnpm/action-setup@v2
       with: 
         version: 7
-
-    - name: Setup Node.js with version ${{ matrix.node-version }}
+    - name: Setup Node.js ${{ matrix.node-version }}
       uses: actions/setup-node@v3
       with:
         node-version: ${{ matrix.node-version }}
         cache: 'pnpm'
-    
-    - name: Install packages
+    - name: Install dependencies
       run: pnpm install
-
-    - name: Build
+    - name: Build distribution
       run: pnpm run build
+  upload:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+    - name: Create artifact
+      run: tar --dereference --hard-dereference --directory dist/ -zcvf dist.tar.gz .
+    - name: Upload artifact
+      uses: actions/upload-artifact@v1
+      with:
+        name: distribution
+        path: dist.tar.gz
