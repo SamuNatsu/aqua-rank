@@ -21,7 +21,6 @@ const login = async ()=>{
     loginWarn.value = 'User ID cannot be empty'
     return
   }
-
   if (passwd.value.length === 0) {
     loginWarn.value = 'Password cannot be empty'
     return
@@ -44,12 +43,8 @@ const validateContestList = async ()=>{
 
   contestListWarn.value = 'Initializing...'
   const res = await contest.init()
-  if (res.code !== 0)
-    contestListWarn.value = res.msg
-  else
-    contestListWarn.value = ''
-  
-  console.log(res.data)
+  contestListWarn.value = (res.code !== 0 ? res.msg : '')
+    console.log(res.data)
 }
 </script>
 

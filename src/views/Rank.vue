@@ -1,9 +1,13 @@
 <script setup>
-import { ref } from 'vue'
+import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useContestStore } from '../store/contest'
 
 // Components
 import CompetitorRowVue from '../components/CompetitorRow.vue'
+
+// Router
+const router = useRouter()
 
 // Stores
 const contest = useContestStore()
@@ -11,7 +15,43 @@ const contest = useContestStore()
 // Reactive
 const exception = ref(null)
 
-contest.startLoop()
+// Functions
+const onKeyUp = async (e)=>{
+  switch (e.code) {
+    case 'Escape':
+      router.push('/')
+      break
+    case 'KeyE':
+      router.push('/settings')
+      break
+    case 'KeyF': {
+      contest.rank = null
+      const res = await contest.startLoop(true)
+      if (res.code !== 0)
+        exception.value = res.msg
+      break
+    }
+    case 'KeyT': {
+      contest.rank = null
+      const res = await contest.testLoop(new Date('2022-12-07 18:00:00'))
+      if (res.code !== 0)
+        exception.value = res.msg
+      break
+    }
+  }
+}
+
+// Life cycle
+onMounted(async ()=>{
+  document.addEventListener('keyup', onKeyUp)
+
+  const res = await contest.startLoop()
+  if (res.code !== 0)
+    exception.value = res.msg
+})
+onBeforeUnmount(()=>{
+  document.removeEventListener('keyup', onKeyUp)
+})
 </script>
 
 <template>
@@ -51,7 +91,7 @@ contest.startLoop()
     <div class="spin"/>
     <div>Loading</div>
   </div>
-  <div v-else class="warn">Error: {{ exception }}</div>
+  <div v-else class="warn">[Error] {{ exception }}</div>
 </template>
 
 <style lang="postcss" scoped>

@@ -2,7 +2,6 @@
 import { defineStore } from 'pinia'
 import _ from 'lodash'
 import { Contest } from '../api/contest'
-import { useRouter } from 'vue-router'
 
 const contest = Contest.getInstance()
 
@@ -18,7 +17,7 @@ export const useContestStore = defineStore('contest', {
     schoolFilter: null,
     unofficialFilter: false,
     rank: null,
-    loop: false
+    loop: null
   }),
   getters: {
     filteredRank() {
@@ -58,34 +57,49 @@ export const useContestStore = defineStore('contest', {
     getFilter() {
       return this.schoolFilter.filter((v)=>v !== null)
     },
-    async update(all) {
-      const res = (await contest.update(all))
+    async update(all, time) {
+      const res = (await contest.update(all, time))
       if (res.code !== 0)
         return res
 
       this.rank = contest.rank
       return { code: 0 }
     },
-    async startLoop() {
-      const router = useRouter()
+    async startLoop(force) {
+      if (this.loop !== null && force !== true)
+        return { code: 0 }
 
-      if (this.loop)
-        return
-      this.loop = true
+      if (force === true)
+        clearInterval(this.loop)
 
-      document.addEventListener('keyup', (e)=>{
-        switch (e.code) {
-          case 'Escape':
-            router.push('/')
-            break
-          case 'KeyE':
-            router.push('/settings')
-            break
-        }
-      })
+      let res = await this.init()
+      if (res.code !== 0)
+        return res
 
-      await this.init()
       await this.update(true)
+
+      this.loop = setInterval(async ()=>{
+        await this.update()
+      }, 10000)
+
+      return { code: 0 }
+    },
+    async testLoop(time) {
+      if (this.loop !== null)
+        return { code: 0 }
+
+      let res = await this.init()
+      if (res.code !== 0)
+        return res
+
+      await this.update(true, time)
+
+      this.loop = setInterval(async ()=>{
+        time = new Date(time.getTime() + 10000)
+        await this.update(false, time)
+      }, 10000)
+
+      return { code: 0 }
     }
   },
   persist: {

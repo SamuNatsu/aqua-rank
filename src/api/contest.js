@@ -23,9 +23,25 @@ class Contest {
   firstBloodList = new Set()
   rank = []
   lastRank = new Map()
+  waitingQueue = []
 
   async init(contestIdList) {
     const remote = useRemoteStore()
+
+    this.title = null
+    this.startTime = null
+    this.endTime = null
+    this.frozenTime = null
+    this.contestMap = null
+    this.problemList = null
+    this.teamMap = null
+    this.lastUpdate = 0
+    this.teamStatusMap = new Map()
+    this.firstBloodList = new Set()
+
+    this.rank = []
+    this.lastUpdate = new Map()
+    this.waitingQueue = []
 
     let res = await remote.fetchContestList(contestIdList)
     if (res.code < 0)
@@ -49,6 +65,7 @@ class Contest {
     this.title = res.get(contestIdList[0]).title
     this.startTime = res.get(contestIdList[0]).start_time
     this.endTime = res.get(contestIdList[0]).end_time
+    this.frozenTime = res.get(contestIdList[0]).frozen_time
     this.contestMap = res
 
     res = await remote.fetchProblemList(contestIdList)
@@ -76,22 +93,68 @@ class Contest {
     return { code: 0 }
   }
 
-  async update(all) {
+  async update(all, time) {
     const remote = useRemoteStore()
-    
+ 
+    // Check if fully refresh
     if (all === true) {
       this.lastUpdate = 0
       this.teamStatusMap.clear()
+      this.waitingQueue = []
     }
 
+    // Check contest list
+    if (this.contestMap === null)
+      return { code: -1, msg: 'Contest not initialized' }
+
+    // Get pending solutions
+    let tmp = []
+    while (this.waitingQueue.length > 0 && this.waitingQueue[0].scheduleTime <= new Date().getTime()) {
+      tmp.push(this.waitingQueue.shift())
+    }
+
+    // Fetch penging solutions
+    if (tmp.length !== 0) {
+      // Generate query map
+      tmp = _.reduce(tmp, (map, v)=>{
+        if (!map.has(v.contestId))
+          map.set(v.contestId, [])
+        map.get(v.contestId).push(v.solutionId)
+        return map
+      }, new Map())
+
+      // Fetch wait
+      const res = await remote.fetchSolutionListByIds(tmp)
+      if (res.code !== 0)
+        return res
+      tmp = res.data
+
+      // Add pendings back to queue, random schedule (5s ~ 25s)
+      tmp.filter((v)=>[0, 1, 2, 3].includes(v.result)).forEach((v)=>{
+        this.waitingQueue.push({
+          contestId: v.contest_id,
+          solutionId: v.solution_id,
+          scheduleTime: new Date().getTime() + 5000 + Math.random() * 20000
+        })
+      })
+    }
+
+    // Fetch timeline solutions
     const newUpdateTime = new Date().getTime()
-    let res = await remote.fetchSolutionListByContests([...this.contestMap.keys()], new Date(this.lastUpdate))
-    if (res.code < 0)
+    let res = await remote.fetchSolutionListByContests([...this.contestMap.keys()], time ?? new Date(this.lastUpdate))
+    if (res.code !== 0)
       return res
     res = res.data
+    if (tmp.length !== 0) {
+      res.push(...tmp)
+      res.sort((a, b)=>a.in_date - b.in_date)
+    }
 
+    // Update team status
     res.forEach((v)=>{
       const teamKey = v.team_id + '@' + v.contest_id
+
+      // Check team status existance
       if (!this.teamStatusMap.has(teamKey)) {
         const tmp = []
         for (let i = 0; i < this.problemList.length; ++i)
@@ -107,6 +170,8 @@ class Contest {
 
       const problemIdx = this.problemList.findIndex((p)=>p.problem_id === v.problem_id)
       const current = this.teamStatusMap.get(teamKey)[problemIdx]
+
+      // Update status
       switch (v.result) {
         case 4:   // AC
           if (['first_blood', 'accepted'].includes(current.result))
@@ -115,7 +180,7 @@ class Contest {
           if (current.result !== 'pending')
             current.tries++
 
-          current.penalty += Math.trunc((v.in_date - new Date(this.startTime).getTime() / 1000) / 60) 
+          current.penalty += Math.trunc((v.in_date - (time ?? new Date(this.startTime)).getTime() / 1000) / 60) 
  
           if (this.firstBloodList.has(v.problem_id)) {
             current.result = 'first_blood'
@@ -142,8 +207,10 @@ class Contest {
           if (['first_blood', 'accepted'].includes(current.result))
             break
 
+          if (current.result !== 'pending')
+            current.tries++
+
           current.result = 'wrong_answer'
-          current.tries++
           current.penalty += 20
           break
         case 13:  // Tested
@@ -158,10 +225,16 @@ class Contest {
 
           current.result = 'pending'
           current.tries++
+          this.waitingQueue.push({
+            contestId: v.contest_id,
+            solutionId: v.solution_id,
+            scheduleTime: new Date().getTime() + 5000
+          })
           break
       }
     })
 
+    // Generate basic rank
     const ret = []
     this.teamStatusMap.forEach((v, k)=>{
       let solved = 0, penalty = 0
@@ -179,6 +252,8 @@ class Contest {
         status: v
       })
     })
+
+    // Sort rank
     ret.sort((a, b)=>{
       if (a.solved === b.solved) {
         if (a.penalty === b.penalty) {
@@ -190,6 +265,8 @@ class Contest {
         return b.solved - a.solved
       }
     })
+
+    // Assign rank value
     const newRank = new Map()
     ret.forEach((value, index, self)=>{
       if (index === 0) {
@@ -206,6 +283,8 @@ class Contest {
         newRank.set(value.id, index + 1)
       }
     })
+
+    // Assign rank change
     ret.forEach((v, i, self)=>{
       if (!this.lastRank.has(v.id))
         self[i].change = 'up'
@@ -215,9 +294,11 @@ class Contest {
         self[i].change = 'down'
     })
 
+    // Update
     this.rank = ret
     this.lastRank = newRank
     this.lastUpdate = newUpdateTime
+
     return { code: 0 }
   }
 }

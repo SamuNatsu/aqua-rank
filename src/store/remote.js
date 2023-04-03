@@ -113,7 +113,7 @@ export const useRemoteStore = defineStore('remote', {
           throw { message: res.meg }
 
         const ret = new Map()
-        res.data.filter((v)=>v.private === 2).forEach((v)=>{
+        res.data.filter((v)=>v !== null && v.private === 2).forEach((v)=>{
           ret.set(v.contest_id, v)
         })
 
@@ -247,7 +247,7 @@ export const useRemoteStore = defineStore('remote', {
     },
     async fetchSolutionListByIds(cidSidMap) {
       const ret = []
-      for (i of cidSidMap) {
+      for (let i of cidSidMap) {
         const res = await this.fetchSolutionListRaw({
           contest_id: i[0],
           solution_id_list: i[1]
