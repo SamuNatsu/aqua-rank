@@ -31,8 +31,10 @@ jobs:
       run: pnpm install
     - name: Build distribution
       run: pnpm run build
+    - name: Create artifact
+      run: tar --dereference --hard-dereference --directory dist/ -zcvf aqua-rank.tar.gz .
     - name: Upload artifact
       uses: actions/upload-artifact@v3
       with:
         name: aqua-rank-node-${{ matrix.node-version }}
-        path: dist/
+        path: aqua-rank.tar.gz
